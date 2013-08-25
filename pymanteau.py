@@ -85,6 +85,38 @@ class QuadShape(DrawShape):
         ("line", (("face_width", 0), (0, 0))),
     )
 
+class HorzTabStrip(DrawShape):
+    Defaults = {
+        'tab_count': 4,
+    }
+
+    def draw(self, canvas, **args):
+        tc = self.config["tab_count"]
+        ttc = tc + (tc - 1)
+        self.config["tab_width"] = (self.config["face_width"] / float(ttc))
+        tm = TabShape(self.stack, self.config)
+        self.stack.append(Translation((0, 0)))
+        for tc in range(ttc):
+            self.stack[-1] = Translation(("%s * tab_width" % tc, 0))
+            tm.draw(canvas, **args)
+        self.stack.pop()
+
+class VertTabStrip(DrawShape):
+    Defaults = {
+        'tab_count': 4,
+    }
+
+    def draw(self, canvas, **args):
+        tc = self.config["tab_count"]
+        ttc = tc + (tc - 1)
+        self.config["tab_width"] = (self.config["face_height"] / float(ttc))
+        tm = TabShape(self.stack, self.config)
+        self.stack.append(Translation((0, 0)))
+        for tc in range(0, ttc, 2):
+            self.stack[-1] = Translation((0, "%s * tab_width" % tc))
+            tm.draw(canvas, **args)
+        self.stack.pop()
+
 class BoxFace(QuadShape):
     def draw(self, canvas, **args):
         # transform us to our center
@@ -104,8 +136,12 @@ class BoxFace(QuadShape):
         tm.draw(canvas, **args)
         # right
         self.stack[0] = Rotation(270)
-        self.stack[-1] = Translation(("-face_width / 2.0", "tab_width / 2.0"))
-        tm.draw(canvas, **args)
+        #self.stack[-1] = Translation(("-face_width / 2.0", "tab_width / 2.0"))
+        #tm.draw(canvas, **args)
+        self.stack[-1] = Translation(("-face_width / 2.0", "-face_height / 2.0 + tab_width"))
+        ts = VertTabStrip(self.stack, self.config)
+        ts.draw(canvas, **args)
+
     
 class BoxFactory(object):
     def __init__(self, fn="box.dxf"):
