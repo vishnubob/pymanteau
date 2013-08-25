@@ -39,12 +39,13 @@ class TransformStack(list):
 class DrawShape(object):
     Defaults = {}
 
-    def __init__(self, stack=None, config={}):
+    def __init__(self, stack=None, config={}, **args):
         if stack == None:
             stack = TransformStack()
         self.stack = stack
         self.config = self.Defaults.copy()
         self.config.update(config)
+        self.config.update(args)
     
     def transform(self, coords):
         _coords = []
@@ -72,6 +73,18 @@ class TabShape(DrawShape):
         ("line", (("tab_width", "tab_height"), ("tab_width", 0))),
     )
 
+class LeftTabCornerShape(TabShape):
+    Operations = (
+        ("line", ((0, 0), (0, "tab_height"))),
+        ("line", ((0, "tab_height"), ("tab_width - tab_height", "tab_height"))),
+    )
+
+class LeftTabCornerShape(TabShape):
+    Operations = (
+        ("line", ((0, 0), (0, "tab_height"))),
+        ("line", ((0, "tab_height"), ("tab_width - tab_height", "tab_height"))),
+    )
+
 class QuadShape(DrawShape):
     Defaults = {
         'face_width': 40,
@@ -85,36 +98,41 @@ class QuadShape(DrawShape):
         ("line", (("face_width", 0), (0, 0))),
     )
 
-class HorzTabStrip(DrawShape):
+class TabStrip(DrawShape):
     Defaults = {
-        'tab_count': 4,
+        'strip_tab_count': 4,
+        'strip_vertical': True,
+        'strip_positive': True,
     }
 
     def draw(self, canvas, **args):
-        tc = self.config["tab_count"]
+        tc = self.config["strip_tab_count"]
         ttc = tc + (tc - 1)
-        self.config["tab_width"] = (self.config["face_width"] / float(ttc))
-        tm = TabShape(self.stack, self.config)
+        if self.config["strip_vertical"]:
+            tw = (self.config["face_height"] / float(ttc))
+        else:
+            tw = (self.config["face_width"] / float(ttc))
+        ts = TabShape(self.stack, self.config, tab_width=tw)
+        tcs = LeftTabCornerShape(self.stack, self.config, tab_width=tw)
         self.stack.append(Translation((0, 0)))
-        for tc in range(ttc):
-            self.stack[-1] = Translation(("%s * tab_width" % tc, 0))
-            tm.draw(canvas, **args)
-        self.stack.pop()
-
-class VertTabStrip(DrawShape):
-    Defaults = {
-        'tab_count': 4,
-    }
-
-    def draw(self, canvas, **args):
-        tc = self.config["tab_count"]
-        ttc = tc + (tc - 1)
-        self.config["tab_width"] = (self.config["face_height"] / float(ttc))
-        tm = TabShape(self.stack, self.config)
-        self.stack.append(Translation((0, 0)))
-        for tc in range(0, ttc, 2):
-            self.stack[-1] = Translation((0, "%s * tab_width" % tc))
-            tm.draw(canvas, **args)
+        if self.config["strip_positive"]:
+            tc_start = 0
+        else:
+            tc_start = 1
+        steps = range(tc_start, ttc, 2)
+        for tc in steps:
+            print tc, ttc
+            if self.config["strip_vertical"]:
+                self.stack[-1] = Translation((0, "%s * tab_width" % tc))
+            else:
+                self.stack[-1] = Translation(("%s * tab_width" % tc, 0))
+            ts.draw(canvas, **args)
+            """
+            if tc in (steps[0], steps[-1]):
+                tcs.draw(canvas, **args)
+            else:
+                ts.draw(canvas, **args)
+            """
         self.stack.pop()
 
 class BoxFace(QuadShape):
@@ -125,22 +143,25 @@ class BoxFace(QuadShape):
         # bottom
         self.stack.append(Translation(("-tab_width / 2.0", "-face_height / 2.0")))
         tm = TabShape(self.stack, self.config)
-        tm.draw(canvas, **args)
-        # top
-        self.stack[0] = Rotation(180)
-        self.stack[-1] = Translation(("tab_width / 2.0", "face_height / 2.0"))
-        tm.draw(canvas, **args)
+        #tm.draw(canvas, **args)
         # left
         self.stack[0] = Rotation(90)
         self.stack[-1] = Translation(("face_width / 2.0", "-tab_width / 2.0"))
-        tm.draw(canvas, **args)
+        #tm.draw(canvas, **args)
         # right
-        self.stack[0] = Rotation(270)
+        self.stack[0] = Rotation(90)
         #self.stack[-1] = Translation(("-face_width / 2.0", "tab_width / 2.0"))
         #tm.draw(canvas, **args)
-        self.stack[-1] = Translation(("-face_width / 2.0", "-face_height / 2.0 + tab_width"))
-        ts = VertTabStrip(self.stack, self.config)
+        self.stack[-1] = Translation(("face_width / 2.0", "-face_height / 2.0"))
+        ts = TabStrip(self.stack, self.config)
         ts.draw(canvas, **args)
+        # top
+        self.stack[0] = Rotation(0)
+        #self.stack[-1] = Translation(("tab_width / 2.0", "face_height / 2.0"))
+        self.stack[-1] = Translation(("-face_width / 2.0", "-face_height / 2.0"))
+        #ts = TabStrip(self.stack, self.config, strip_vertical=False)
+        #ts.draw(canvas, **args)
+        #tm.draw(canvas, **args)
 
     
 class BoxFactory(object):
