@@ -2,55 +2,74 @@ import os
 import math
 from dxfwrite import DXFEngine as dxf
 
-class Transform(object):
-    def transform(self, point, config):
-        pass
+class Context(object):
+    def __init__(self, fn):
+        self.canvas = dxf.drawing(fn)
+        canvas.add_layer('LINES')
+        self.config = [{}]
+        self.translation_stack = []
+        self.rotation_stack = []
 
-    def convert(self, point, config):
-        return tuple([eval(str(pos), config) for pos in point])
+    def save(self):
+        self.canvas.save()
 
-class Translation(Transform):
-    def __init__(self, offset=(0, 0)):
-        self.offset = offset
+    def push_config(self, **config):
+        _config = self.config[-1].copy()
+        _config.update(config)
+        self.config.append(_config)
 
-    def transform(self, point, config):
-        return map(sum, zip(self.convert(self.offset, config), self.convert(point, config)))
+    def pop_config(self):
+        self.config.pop()
 
-class Rotation(Transform):
-    def __init__(self, degrees=0, radians=None):
+    def push_rotation(self, degrees=0, radians=None):
         if radians != None:
-            self.radians = None
+            radians = None
         else:
-            self.radians = math.radians(degrees)
+            radians = math.radians(degrees)
+        self.rotation_stack.append(radians)
 
-    def transform(self, point, config):
-        point = self.convert(point, config)
-        x = point[0] * math.cos(self.radians) - point[1] * math.sin(self.radians)
-        y = point[0] * math.sin(self.radians) + point[1] * math.cos(self.radians)
-        return (x, y)
+    def pop_rotation(self):
+        self.rotation.pop()
 
-class TransformStack(list):
-    def transform(self, point, config):
-        _point = point[:]
-        for step in self:
-            _point = step.transform(_point, config)
-        return _point
-    
+    def push_translation(self, point):
+        self.translation_stack.append(point)
+
+    def pop_translation(self):
+        self.translation_stack.pop()
+
+    def convert(self, point):
+        return tuple([eval(str(pos), self.config) for pos in point])
+        
+    def translate(self, point):
+        for offset in self.translation_stack:
+            offset = self.convert(offset)
+            point = self.convert(point)
+            point = tuple(map(sum, zip(offset, point)))
+        return point
+
+    def rotate(self, point):
+        for angle in self.rotation_stack:
+            point = self.convert(point)
+            x = point[0] * math.cos(angle) - point[1] * math.sin(angle)
+            y = point[0] * math.sin(angle) + point[1] * math.cos(angle)
+            point = (x, y)
+        return point
+        
+    def transform(self, point):
+        return self.translate(self.rotate(point))
+
 class DrawShape(object):
-    Defaults = {}
+    def __init__(self, context):
+        self.context = context
 
-    def __init__(self, stack=None, config={}, **args):
-        if stack == None:
-            stack = TransformStack()
-        self.stack = stack
-        self.config = self.Defaults.copy()
-        self.config.update(config)
-        self.config.update(args)
+    @property
+    def config(self):
+        return self.content.config
     
     def transform(self, coords):
         _coords = []
         for point in coords:
-            point = self.stack.transform(point, self.config)
+            point = self.context.transform(point, self.config)
             _coords.append(point)
         return _coords
 
@@ -62,15 +81,10 @@ class DrawShape(object):
             canvas.add(op(*coords, **args))
 
 class TabShape(DrawShape):
-    Defaults = {
-        'tab_width': 10,
-        'tab_height': 2,
-    }
-
     Operations = (
-        ("line", ((0, 0), (0, "tab_height"))),
-        ("line", ((0, "tab_height"), ("tab_width", "tab_height"))),
-        ("line", (("tab_width", "tab_height"), ("tab_width", 0))),
+        ("line", (("-tab_width / 2.0", "-tab_height / 2.0"), ("-tab_width / 2.0", "tab_height / 2.0"))),
+        ("line", (("-tab_width / 2.0", "tab_height / 2.0"), ("tab_width / 2.0", "tab_height / 2.0"))),
+        ("line", (("tab_width / 2.0", "tab_height / 2.0"), ("tab_width / 2.0", "-tab_height / 2.0"))),
     )
 
 class LeftTabCornerShape(TabShape):
@@ -86,25 +100,14 @@ class LeftTabCornerShape(TabShape):
     )
 
 class QuadShape(DrawShape):
-    Defaults = {
-        'face_width': 40,
-        'face_height': 40,
-    }
-
     Operations = (
-        ("line", ((0, 0), (0, "face_height"))),
-        ("line", ((0, "face_height"), ("face_width", "face_height"))),
-        ("line", (("face_width", "face_height"), ("face_width", 0))),
-        ("line", (("face_width", 0), (0, 0))),
+        ("line", (("-face_width / 2.0", "-face_height / 2.0"), ("-face_width / 2.0", "face_height / 2.0"))),
+        ("line", (("-face_width / 2.0", "face_height / 2.0"), ("face_width / 2.0", "face_height / 2.0"))),
+        ("line", (("face_width / 2.0", "face_height / 2.0"), ("face_width / 2.0", "-face_height / 2.0"))),
+        ("line", (("face_width / 2.0", "-face_height / 2.0"), ("-face_width / 2.0", "-face_height / 2.0"))),
     )
 
 class TabStrip(DrawShape):
-    Defaults = {
-        'strip_tab_count': 4,
-        'strip_vertical': True,
-        'strip_positive': True,
-    }
-
     def draw(self, canvas, **args):
         tc = self.config["strip_tab_count"]
         ttc = tc + (tc - 1)
@@ -112,9 +115,9 @@ class TabStrip(DrawShape):
             tw = (self.config["face_height"] / float(ttc))
         else:
             tw = (self.config["face_width"] / float(ttc))
-        ts = TabShape(self.stack, self.config, tab_width=tw)
-        tcs = LeftTabCornerShape(self.stack, self.config, tab_width=tw)
-        self.stack.append(Translation((0, 0)))
+        ts = TabShape(self.context, self.config, tab_width=tw)
+        tcs = LeftTabCornerShape(self.context, self.config, tab_width=tw)
+        self.context.append(Translation((0, 0)))
         if self.config["strip_positive"]:
             tc_start = 0
         else:
@@ -123,9 +126,9 @@ class TabStrip(DrawShape):
         for tc in steps:
             print tc, ttc
             if self.config["strip_vertical"]:
-                self.stack[-1] = Translation((0, "%s * tab_width" % tc))
+                self.context[-1] = Translation((0, "%s * tab_width" % tc))
             else:
-                self.stack[-1] = Translation(("%s * tab_width" % tc, 0))
+                self.context[-1] = Translation(("%s * tab_width" % tc, 0))
             ts.draw(canvas, **args)
             """
             if tc in (steps[0], steps[-1]):
@@ -133,47 +136,48 @@ class TabStrip(DrawShape):
             else:
                 ts.draw(canvas, **args)
             """
-        self.stack.pop()
+        self.context.pop()
 
 class BoxFace(QuadShape):
-    def draw(self, canvas, **args):
+    def _draw(self, canvas, **args):
         # transform us to our center
         super(BoxFace, self).draw(canvas, **args)
-        self.stack.append(Translation(("face_width / 2.0", "face_height / 2.0")))
+        self.context.append(Translation(("face_width / 2.0", "face_height / 2.0")))
         # bottom
-        self.stack.append(Translation(("-tab_width / 2.0", "-face_height / 2.0")))
-        tm = TabShape(self.stack, self.config)
+        self.context.append(Translation(("-tab_width / 2.0", "-face_height / 2.0")))
+        tm = TabShape(self.context, self.config)
         #tm.draw(canvas, **args)
         # left
-        self.stack[0] = Rotation(90)
-        self.stack[-1] = Translation(("face_width / 2.0", "-tab_width / 2.0"))
+        self.context[0] = Rotation(90)
+        self.context[-1] = Translation(("face_width / 2.0", "-tab_width / 2.0"))
         #tm.draw(canvas, **args)
         # right
-        self.stack[0] = Rotation(90)
-        #self.stack[-1] = Translation(("-face_width / 2.0", "tab_width / 2.0"))
+        self.context[0] = Rotation(90)
+        #self.context[-1] = Translation(("-face_width / 2.0", "tab_width / 2.0"))
         #tm.draw(canvas, **args)
-        self.stack[-1] = Translation(("face_width / 2.0", "-face_height / 2.0"))
-        ts = TabStrip(self.stack, self.config)
+        self.context[-1] = Translation(("face_width / 2.0", "-face_height / 2.0"))
+        ts = TabStrip(self.context, self.config)
         ts.draw(canvas, **args)
         # top
-        self.stack[0] = Rotation(0)
-        #self.stack[-1] = Translation(("tab_width / 2.0", "face_height / 2.0"))
-        self.stack[-1] = Translation(("-face_width / 2.0", "-face_height / 2.0"))
-        #ts = TabStrip(self.stack, self.config, strip_vertical=False)
+        self.context[0] = Rotation(0)
+        #self.context[-1] = Translation(("tab_width / 2.0", "face_height / 2.0"))
+        self.context[-1] = Translation(("-face_width / 2.0", "-face_height / 2.0"))
+        #ts = TabStrip(self.context, self.config, strip_vertical=False)
         #ts.draw(canvas, **args)
         #tm.draw(canvas, **args)
 
-    
 class BoxFactory(object):
+    Defaults = {
+        "face_width": 40,
+        "face_height": 40,
+    }
+
     def __init__(self, fn="box.dxf"):
-        drawing = dxf.drawing(fn)
-        drawing.add_layer('LINES')
-        r = Rotation(0)
-        t = Translation((10, 10))
-        stack = TransformStack([r, t])
-        quad = BoxFace(stack)
-        quad.draw(drawing, layer="LINES")
-        drawing.save()
+        context = self.context(fn)
+        context.push_translation((50, 50))
+        qs = QuadShape(context)
+        qs.draw()
+        self.context.save()
         
 bf = BoxFactory()
 os.system("inkscape -z box.dxf -e box.png")
