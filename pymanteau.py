@@ -64,7 +64,7 @@ class DrawShape(object):
 
     @property
     def config(self):
-        return self.context.config
+        return self.context.config[-1]
     
     def transform(self, coords):
         _coords = []
@@ -82,21 +82,21 @@ class DrawShape(object):
 
 class TabShape(DrawShape):
     Operations = (
-        ("line", (("tab_width / 2.0", "-tab_height / 2.0"), ("-tab_width / 2.0", "-tab_height / 2.0"))),
+        ("line", (("-tab_width / 2.0", "tab_height / 2.0"), ("-tab_width / 2.0", "-tab_height / 2.0"))),
         ("line", (("-tab_width / 2.0", "-tab_height / 2.0"), ("tab_width / 2.0", "-tab_height / 2.0"))),
         ("line", (("tab_width / 2.0", "-tab_height / 2.0"), ("tab_width / 2.0", "tab_height / 2.0"))),
     )
 
 class LeftTabCornerShape(TabShape):
     Operations = (
-        ("line", ((0, 0), (0, "tab_height"))),
-        ("line", ((0, "tab_height"), ("tab_width - tab_height", "tab_height"))),
+        ("line", (("-tab_width / 2.0 + tab_height", "-tab_height / 2.0"), ("tab_width / 2.0", "-tab_height / 2.0"))),
+        ("line", (("tab_width / 2.0", "-tab_height / 2.0"), ("tab_width / 2.0", "tab_height / 2.0"))),
     )
 
-class LeftTabCornerShape(TabShape):
+class RightTabCornerShape(TabShape):
     Operations = (
-        ("line", ((0, 0), (0, "tab_height"))),
-        ("line", ((0, "tab_height"), ("tab_width - tab_height", "tab_height"))),
+        ("line", (("-tab_width / 2.0", "tab_height / 2.0"), ("-tab_width / 2.0", "-tab_height / 2.0"))),
+        ("line", (("-tab_width / 2.0", "-tab_height / 2.0"), ("tab_width / 2.0 - tab_height", "-tab_height / 2.0"))),
     )
 
 class QuadShape(DrawShape):
@@ -108,42 +108,39 @@ class QuadShape(DrawShape):
     )
 
 class TabStrip(DrawShape):
-    def draw(self, canvas, **args):
+    def draw(self, **args):
         tc = self.config["strip_tab_count"]
         ttc = tc + (tc - 1)
-        if self.config["strip_vertical"]:
-            tw = (self.config["face_height"] / float(ttc))
-        else:
-            tw = (self.config["face_width"] / float(ttc))
-        ts = TabShape(self.context, self.config, tab_width=tw)
-        tcs = LeftTabCornerShape(self.context, self.config, tab_width=tw)
-        self.context.append(Translation((0, 0)))
-        if self.config["strip_positive"]:
-            tc_start = 0
-        else:
-            tc_start = 1
+        tw = (self.config["strip_width"] / float(ttc))
+        self.context.push_config(tab_width=tw, total_tab_count=ttc)
+        tc_start = int(not self.config["strip_tab_positive"])
         steps = range(tc_start, ttc, 2)
-        for tc in steps:
-            print tc, ttc
-            if self.config["strip_vertical"]:
-                self.context[-1] = Translation((0, "%s * tab_width" % tc))
-            else:
-                self.context[-1] = Translation(("%s * tab_width" % tc, 0))
-            ts.draw(canvas, **args)
+        self.context.push_translation(("(total_tab_count / 2.0) * step + tab_width / 2.0 - strip_width / 2.0", 0))
+        for step in steps:
+            self.context.push_config(step=step)
+            shape = TabShape(self.context)
+            shape.draw(**args)
             """
-            if tc in (steps[0], steps[-1]):
-                tcs.draw(canvas, **args)
+            if tc == steps[0]:
+                shape = LeftCornerTabShape(self.context)
+                shape.draw(**args)
+            elif tc == steps[-1]:
+                shape = RightCornerTabShape(self.context)
+                shape.draw(**args)
             else:
-                ts.draw(canvas, **args)
+                shape = TabShape(self.context)
+                shape.draw(**args)
             """
-        self.context.pop()
+            self.context.pop_config()
+        self.context.pop_translation()
+        self.context.pop_config()
 
 class BoxFace(QuadShape):
     def draw(self, **args):
         super(BoxFace, self).draw(**args)
-        self.context.push_config(tab_width=5, tab_height=2)
+        self.context.push_config(strip_tab_count=2, strip_width=self.config["face_width"], strip_tab_positive=True, tab_height=2)
         self.context.push_translation((0, "(face_height / 2.0) - (tab_height / 2.0)"))
-        tm = TabShape(self.context)
+        tm = TabStrip(self.context)
         tm.draw()
 
 class BoxFactory(object):
