@@ -36,7 +36,7 @@ class TransformStack(list):
             _point = step.transform(_point, config)
         return _point
     
-class DrawMacro(object):
+class DrawShape(object):
     Defaults = {}
 
     def __init__(self, stack=None, config={}):
@@ -60,7 +60,7 @@ class DrawMacro(object):
             print coords
             canvas.add(op(*coords, **args))
 
-class TabMacro(DrawMacro):
+class TabShape(DrawShape):
     Defaults = {
         'tab_width': 10,
         'tab_height': 2,
@@ -72,7 +72,7 @@ class TabMacro(DrawMacro):
         ("line", (("tab_width", "tab_height"), ("tab_width", 0))),
     )
 
-class QuadMacro(DrawMacro):
+class QuadShape(DrawShape):
     Defaults = {
         'face_width': 40,
         'face_height': 40,
@@ -85,18 +85,14 @@ class QuadMacro(DrawMacro):
         ("line", (("face_width", 0), (0, 0))),
     )
 
-class BoxFace(QuadMacro):
+class BoxFace(QuadShape):
     def draw(self, canvas, **args):
         # transform us to our center
         super(BoxFace, self).draw(canvas, **args)
-        width = self.config["face_width"]
-        height = self.config["face_width"]
-        half_width = width / 2.0
-        half_height = height / 2.0
-        self.stack.append(Translation((half_width, half_height)))
+        self.stack.append(Translation(("face_width / 2.0", "face_height / 2.0")))
         # bottom
         self.stack.append(Translation(("-tab_width / 2.0", "-face_height / 2.0")))
-        tm = TabMacro(self.stack, self.config)
+        tm = TabShape(self.stack, self.config)
         tm.draw(canvas, **args)
         # top
         self.stack[0] = Rotation(180)
