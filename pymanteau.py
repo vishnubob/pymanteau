@@ -82,9 +82,9 @@ class DrawShape(object):
 
 class TabShape(DrawShape):
     Operations = (
-        ("line", (("-tab_width / 2.0", "-tab_height / 2.0"), ("-tab_width / 2.0", "tab_height / 2.0"))),
-        ("line", (("-tab_width / 2.0", "tab_height / 2.0"), ("tab_width / 2.0", "tab_height / 2.0"))),
-        ("line", (("tab_width / 2.0", "tab_height / 2.0"), ("tab_width / 2.0", "-tab_height / 2.0"))),
+        ("line", (("tab_width / 2.0", "-tab_height / 2.0"), ("-tab_width / 2.0", "-tab_height / 2.0"))),
+        ("line", (("-tab_width / 2.0", "-tab_height / 2.0"), ("tab_width / 2.0", "-tab_height / 2.0"))),
+        ("line", (("tab_width / 2.0", "-tab_height / 2.0"), ("tab_width / 2.0", "tab_height / 2.0"))),
     )
 
 class LeftTabCornerShape(TabShape):
@@ -142,7 +142,6 @@ class BoxFace(QuadShape):
     def draw(self, **args):
         super(BoxFace, self).draw(**args)
         self.context.push_config(tab_width=5, tab_height=2)
-        self.context.push_rotation(180)
         self.context.push_translation((0, "(face_height / 2.0) - (tab_height / 2.0)"))
         tm = TabShape(self.context)
         tm.draw()
@@ -162,5 +161,4 @@ class BoxFactory(object):
         context.save()
         
 bf = BoxFactory()
-os.system("sync")
 os.system("inkscape -z box.dxf -e box.png")
