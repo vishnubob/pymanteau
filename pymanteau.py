@@ -95,26 +95,79 @@ class DrawShape(object):
             op = getattr(dxf, opname)
             coords = self.transform(coords)
             print coords
-            self.context.canvas.add(op(*coords, layer="LINES", color=1, **args))
-            color += 1
+            self.context.canvas.add(op(*coords, layer="LINES", **args))
 
-class TabShape(DrawShape):
-    Operations = (
-        ("line", (("-tab_width / 2.0", "tab_height / 2.0"), ("-tab_width / 2.0", "-tab_height / 2.0"))),
-        ("line", (("-tab_width / 2.0", "-tab_height / 2.0"), ("tab_width / 2.0", "-tab_height / 2.0"))),
-        ("line", (("tab_width / 2.0", "-tab_height / 2.0"), ("tab_width / 2.0", "tab_height / 2.0"))),
+class CornerShape(DrawShape):
+    PositiveFullStart = (
+        ("line", (("-tab_width / 2.0", "tab_height / 2.0"), ("tab_width / 2.0", "tab_height / 2.0"))),
+        ("line", (("tab_width / 2.0", "tab_height / 2.0"), ("tab_width / 2.0", "-tab_height / 2.0"))),
     )
 
-class LeftCornerTabShape(TabShape):
-    Operations = (
+    PositiveFullEnd = (
+        ("line", (("-tab_width / 2.0", "-tab_height / 2.0"), ("-tab_width / 2.0", "tab_height / 2.0"))),
+        ("line", (("-tab_width / 2.0", "tab_height / 2.0"), ("tab_width / 2.0", "tab_height / 2.0"))),
+    )
+
+    PositivePartialStart = (
+        ("line", (("-tab_width / 2.0 + tab_height", "-tab_height / 2.0"), ("-tab_width / 2.0 + tab_height", "tab_height / 2.0"))),
+        ("line", (("-tab_width / 2.0 + tab_height", "tab_height / 2.0"), ("tab_width / 2.0", "tab_height / 2.0"))),
+        ("line", (("tab_width / 2.0", "tab_height / 2.0"), ("tab_width / 2.0", "-tab_height / 2.0"))),
+    )
+
+    PositivePartialEnd = (
+        ("line", (("-tab_width / 2.0", "-tab_height / 2.0"), ("-tab_width / 2.0", "tab_height / 2.0"))),
+        ("line", (("-tab_width / 2.0", "tab_height / 2.0"), ("tab_width / 2.0 - tab_height", "tab_height / 2.0"))),
+        ("line", (("tab_width / 2.0 - tab_height", "tab_height / 2.0"), ("tab_width / 2.0 - tab_height", "-tab_height / 2.0"))),
+    )
+
+    NegativeFullStart = (
         ("line", (("-tab_width / 2.0 + tab_height", "-tab_height / 2.0"), ("tab_width / 2.0", "-tab_height / 2.0"))),
-        ("line", (("tab_width / 2.0", "-tab_height / 2.0"), ("tab_width / 2.0", "tab_height / 2.0"))),
     )
 
-class RightCornerTabShape(TabShape):
-    Operations = (
-        ("line", (("-tab_width / 2.0", "tab_height / 2.0"), ("-tab_width / 2.0", "-tab_height / 2.0"))),
+    NegativeFullEnd = (
         ("line", (("-tab_width / 2.0", "-tab_height / 2.0"), ("tab_width / 2.0 - tab_height", "-tab_height / 2.0"))),
+    )
+
+    NegativePartialStart = (
+        ("line", (("-tab_width / 2.0 + tab_height", "-tab_height / 2.0"), ("tab_width / 2.0", "-tab_height / 2.0"))),
+    )
+
+    NegativePartialEnd = (
+        ("line", (("-tab_width / 2.0", "-tab_height / 2.0"), ("tab_width / 2.0 - tab_height", "-tab_height / 2.0"))),
+    )
+
+    CornerMap = {
+        "positive_full_start": PositiveFullStart,
+        "positive_full_end": PositiveFullEnd,
+        "positive_partial_start": PositivePartialStart,
+        "positive_partial_end": PositivePartialEnd,
+        "negative_full_start": NegativeFullStart,
+        "negative_full_end": NegativeFullEnd,
+        "negative_partial_start": NegativePartialStart,
+        "negative_partial_end": NegativePartialEnd,
+    }
+
+    def draw(self, **args):
+        positive_flag = self.config.get("strip_positive", True)
+        full_flag = self.config.get("corner_full", True)
+        start_flag = self.config.get("corner_start", True)
+        key1 = ["negative", "positive"][positive_flag]
+        key2 = ["partial", "full"][full_flag]
+        key3 = ["end", "start"][start_flag]
+        key = str.join('_', [key1, key2, key3])
+        self.Operations = self.CornerMap[key]
+        super(CornerShape, self).draw(color=5, **args)
+
+class PositiveTabShape(DrawShape):
+    Operations = (
+        ("line", (("-tab_width / 2.0", "-tab_height / 2.0"), ("-tab_width / 2.0", "tab_height / 2.0"))),
+        ("line", (("-tab_width / 2.0", "tab_height / 2.0"), ("tab_width / 2.0", "tab_height / 2.0"))),
+        ("line", (("tab_width / 2.0", "tab_height / 2.0"), ("tab_width / 2.0", "-tab_height / 2.0"))),
+    )
+
+class NegativeTabShape(DrawShape):
+    Operations = (
+        ("line", (("-tab_width / 2.0", "-tab_height / 2.0"), ("tab_width / 2.0", "-tab_height / 2.0"))),
     )
 
 class QuadShape(DrawShape):
@@ -131,30 +184,35 @@ class TabStrip(DrawShape):
         ttc = tc + (tc - 1)
         tw = (self.config["strip_width"] / float(ttc))
         self.context.push_config(tab_width=tw, total_tab_count=ttc)
-        tc_start = int(not self.config["strip_tab_positive"])
-        steps = range(tc_start, ttc, 2)
-        self.context.push_translation(("tab_width * (step - (last_step / 2.0))", 0))
+        steps = range(ttc)
+        translate = "tab_width * (step - %f) + (tab_width / 2.0)" % (len(steps) / 2.0)
+        self.context.push_translation((translate, 0))
+        shape_map = [NegativeTabShape(self.context), PositiveTabShape(self.context)]
+        offset = int(self.config["strip_positive"])
         for step in steps:
-            self.context.push_config(step=step, last_step=steps[-1])
             if step == steps[0]:
-                shape = LeftCornerTabShape(self.context)
-                shape.draw(**args)
+                self.context.push_config(step=step, corner_start=True)
+                shape = CornerShape(self.context)
             elif step == steps[-1]:
-                shape = RightCornerTabShape(self.context)
-                shape.draw(**args)
+                self.context.push_config(step=step, corner_start=False)
+                shape = CornerShape(self.context)
             else:
-                shape = TabShape(self.context)
-                shape.draw(**args)
+                self.context.push_config(step=step)
+                shape = shape_map[(step + offset) % 2]
+            shape.draw(**args)
             self.context.pop_config()
         self.context.pop_transformation()
         self.context.pop_config()
 
 class BoxFace(QuadShape):
+    Positive = True
+    Full = True
+
     def draw(self, **args):
-        super(BoxFace, self).draw(**args)
+        #super(BoxFace, self).draw(color=4, **args)
         ts = TabStrip(self.context)
         # top
-        self.context.push_config(strip_tab_count=6, strip_width=self.config["face_width"], strip_tab_positive=True, tab_height=2)
+        self.context.push_config(strip_tab_count=4, strip_width=self.config["face_width"], strip_positive=self.Positive, corner_full=self.Full, tab_height=2)
         self.context.push_translation((0, "face_height / 2.0 - tab_height / 2.0"))
         ts.draw()
         self.context.pop_transformation()
@@ -174,6 +232,18 @@ class BoxFace(QuadShape):
         ts.draw()
         self.context.pop_transformation(2)
 
+class BoxFace2(BoxFace):
+    Positive = False
+    Full = True
+
+class BoxFace3(BoxFace):
+    Positive = True
+    Full = False
+
+class BoxFace4(BoxFace):
+    Positive = False
+    Full = False
+
 class BoxFactory(object):
     Defaults = {
         "face_width": 40,
@@ -182,10 +252,27 @@ class BoxFactory(object):
 
     def __init__(self, fn="box.dxf"):
         context = Context(fn)
-        context.push_translation((50, 50))
+        context.push_translation((25, 25))
         context.push_config(**self.Defaults)
         bf = BoxFace(context)
         bf.draw()
+        context.pop_transformation()
+        #
+        context.push_translation((25, 25 + 42))
+        bf = BoxFace2(context)
+        bf.draw()
+        context.pop_transformation()
+        #
+        context.push_translation((25 + 42, 25))
+        bf = BoxFace3(context)
+        bf.draw()
+        context.pop_transformation()
+        #
+        context.push_translation((25 + 42, 25 + 42))
+        bf = BoxFace4(context)
+        bf.draw()
+        context.pop_transformation()
+        #
         context.save()
         
 bf = BoxFactory()
